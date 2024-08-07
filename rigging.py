@@ -9,7 +9,7 @@ class YfToolbox_Operator_LinkDEF2TGT(bpy.types.Operator):
 
     @classmethod
     def description(cls, context, properties):
-        return "Create Target(TGT) bones for Deform(DEF) bones, then add \"Copy Transform\" constraint on it."
+        return "Create Target(TGT) bones for Deform(DEF) bones, then add \"Copy Transform\" constraint on it"
 
     def execute(self, context):
         obj_ = yf_lib.get_active_object()
@@ -46,7 +46,7 @@ class YfToolbox_Operator_LinkDEF2TGT(bpy.types.Operator):
                 # Construct the corresponding target bone name
                 tgt_bone_name = 'TGT_' + bone.name[4:]
                 # Check if the corresponding target bone exists
-                to_remove_constraints = filter(lambda x: x.name==self.CONSTRAINT_NAME, bone.constraints)
+                to_remove_constraints = filter(lambda x: x.name==self.CONSTRAINT_NAME or (x.target==obj_ and x.subtarget==tgt_bone_name), bone.constraints)
                 for c in to_remove_constraints:
                     bone.constraints.remove(c)
                 
@@ -66,7 +66,7 @@ class YfToolbox_Operator_AutoBoneCollection(bpy.types.Operator):
 
     @classmethod
     def description(cls, context, properties):
-        return "Create Target(TGT) bones for Deform(DEF) bones, then add \"Copy Transform\" constraint on it."
+        return "Add bones to collections by their prefix"
 
     def execute(self, context):
         obj_ = yf_lib.get_active_object()
@@ -106,7 +106,7 @@ class YfToolbox_Panel_Rigging(bpy.types.Panel):
                          text="LINK TGT -> DEF",
                          icon="DECORATE_LINKED")
         row = layout.row()
-        row.operator("yf.toolbox_rigging_op_link_tgt_to_def",
+        row.operator("yf.toolbox_rigging_auto_bone_collection",
                          text="AUTO BONE COLLECTION",
                          icon="COLLECTION_NEW")
 
