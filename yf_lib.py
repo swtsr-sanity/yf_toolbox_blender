@@ -1,7 +1,7 @@
 import bpy
 
-def get_active_object() -> bpy.types.Object:
-    return bpy.context.active_object
+def get_selected_objects() -> list[bpy.types.Object]:
+    return bpy.context.selected_objects
 
 
 """
@@ -28,3 +28,17 @@ def get_active_object_interaction_mode() -> str:
 # Sets the object interaction mode
 def set_active_object_interaction_mode(mode_):
     bpy.ops.object.mode_set(mode=mode_)
+
+
+def get_all_collections(armature_):
+    def recursively_get_children_collections(ret_, coll):
+        if len(coll.children) == 0:
+            return [coll]
+        for child in coll.children:
+            ret_ += recursively_get_children_collections(ret_, child)
+        return ret_ 
+    ret = []
+    for c in armature_.collections:
+        ret += recursively_get_children_collections([], c)
+    ret += [c for c in armature_.collections]
+    return ret

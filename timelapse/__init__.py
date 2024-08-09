@@ -6,6 +6,8 @@ bl_info = {
     "description": "XXOO",
 }
 import bpy, os, time
+import re
+
 
 custom_icons= None
 
@@ -17,6 +19,7 @@ def get_blend_file_name():
 def get_image_folder():
     file_path = bpy.data.filepath
     file_name = get_blend_file_name()
+    print("file_path:", file_path)
     return os.path.join(os.path.dirname(file_path), "yf","timelapsy", file_name)
 
 
@@ -200,13 +203,20 @@ def render_image():
 from bpy.app.handlers import persistent
 @persistent
 def yf_timelapsy_on_file_read(dummy):
-    # print("[Timelapsy] New File is read")
-    if bpy.context.scene.yf_timelapsy_is_recording:
-        bpy.app.timers.register(render_image)
-    # Get the max index of image and update
-    image_dir = get_image_folder()
-    # Get the list of PNG images in the directory
-    image_files = sorted([f for f in os.listdir(image_dir) if f.endswith('.png')])
+    try:
+        # print("[Timelapsy] New File is read")
+        if bpy.context.scene.yf_timelapsy_is_recording:
+            bpy.app.timers.register(render_image)
+        # Get the max index of image and update
+        image_dir = get_image_folder()
+        # Get the list of PNG images in the directory
+        image_files = sorted(
+            [f for f in os.listdir(image_dir) if re.search(r"screenshot_(\d+)\.png", f)], 
+            key=lambda x:  int(re.search(r"screenshot_(\d+)\.png", x).group(1))
+        )
+    except FileNotFoundError:
+        image_files = []
+        
     if len(image_files) == 0:
         bpy.context.scene.yf_timelapsy_cur_screenshot_num = 1
     else:
