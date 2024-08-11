@@ -50,18 +50,27 @@ class YfToolbox_Operator_LinkDEF2TGT(bpy.types.Operator):
         if start_mode != 'EDIT':
             yf_lib.set_active_object_interaction_mode('EDIT')
         
+
+        def get_TGT_bone(_DEF_bone):
+            if _DEF_bone.name == "ROOT":
+                return None
+            _TGT_bone_name = 'TGT_' + _DEF_bone.name[4:]
+            _TGT_bone = armature_.edit_bones.get(_TGT_bone_name)
+            if not _TGT_bone:
+                # Exisiting TGT is not found. Create the TGT
+                _TGT_bone = armature_.edit_bones.new('TGT_' + bone.name[4:])
+                # Change the name prefix from 'DEF_' to 'TGT_'
+                _TGT_bone.head = _DEF_bone.head
+                _TGT_bone.tail = _DEF_bone.tail
+                _TGT_bone.roll = _DEF_bone.roll
+                if _DEF_bone.parent:
+                    _TGT_parent_bone = get_TGT_bone(_DEF_bone.parent)
+                    _TGT_bone.parent = _TGT_parent_bone
+            return _TGT_bone
+
         for bone in armature_.edit_bones:
             if bone.name.startswith('DEF_'):
-                TGT_bone_name = 'TGT_' + bone.name[4:]
-                # Check TGT_ bone is already there
-                new_bone = armature_.edit_bones.get(TGT_bone_name)
-                if not new_bone:
-                    # Exisiting TGT is not found. Create the TGT
-                    new_bone = armature_.edit_bones.new('TGT_' + bone.name[4:])
-                    # Change the name prefix from 'DEF_' to 'TGT_'
-                    new_bone.head = bone.head
-                    new_bone.tail = bone.tail
-                    new_bone.roll = bone.roll
+                new_bone = get_TGT_bone(bone)
 
         yf_lib.set_active_object_interaction_mode('POSE')
 
