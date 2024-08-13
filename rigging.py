@@ -1,6 +1,29 @@
 import bpy
 import importlib
 from . import yf_lib
+from pprint import pprint
+
+
+LEFT_SUFFIX = ".L"
+RIGHT_SUFFIX = ".R"
+
+
+PREFIX_ROOT = "ROOT"
+PREFIX_MCH = "MCH"
+PREFIX_DEF = "DEF"
+PREFIX_VIS = "VIS"
+PREFIX_CTRL = "CTRL"
+PREFIX_ORG = "ORG"
+
+BPREFIXES = [PREFIX_ROOT, PREFIX_MCH, PREFIX_DEF, PREFIX_VIS, PREFIX_CTRL, PREFIX_ORG]
+
+prefix_colors = {
+    PREFIX_ROOT: "THEME02",
+    PREFIX_MCH: "THEME03",
+    PREFIX_DEF: "THEME04",
+    PREFIX_ORG: "THEME05",
+    PREFIX_VIS: "THEME06",
+}
 
 
 def get_current_selected_armature(self):
@@ -28,14 +51,27 @@ def get_n_panel_region(context):
                     return region
     return None
 
+def remove_shorter_keys(d):
+    # Sort keys by length in descending order
+    sorted_keys = sorted(d, key=len, reverse=True)
+    unique_dict = {}
+    
+    for key in sorted_keys:
+        value = d[key]
+        # Add the key-value pair to unique_dict if the value is not already in unique_dict
+        if value not in unique_dict.values():
+            unique_dict[key] = value
+    
+    return unique_dict
+
 class YfToolbox_Operator_LinkDEF2TGT(bpy.types.Operator):
     bl_idname = "yf.toolbox_rigging_op_link_tgt_to_def"
-    bl_label = "DEF -> TGT"
+    bl_label = "DEF -> ORG"
     CONSTRAINT_NAME = "COPY XFORM DEF->TGT"
 
     @classmethod
     def description(cls, context, properties):
-        return "Create Target(TGT) bones for Deform(DEF) bones, then add \"Copy Transform\" constraint on it"
+        return "Create Target(ORG) bones for Deform(DEF) bones, then add \"Copy Transform\" constraint on it"
 
     def execute(self, context):
         obj_ = get_current_selected_armature(self)
@@ -52,14 +88,14 @@ class YfToolbox_Operator_LinkDEF2TGT(bpy.types.Operator):
         
 
         def get_TGT_bone(_DEF_bone):
-            if _DEF_bone.name == "ROOT":
+            if _DEF_bone.name == PREFIX_ROOT:
                 return None
-            _TGT_bone_name = 'TGT_' + _DEF_bone.name[4:]
+            _TGT_bone_name = PREFIX_ORG + _DEF_bone.name[4:]
             _TGT_bone = armature_.edit_bones.get(_TGT_bone_name)
             if not _TGT_bone:
                 # Exisiting TGT is not found. Create the TGT
-                _TGT_bone = armature_.edit_bones.new('TGT_' + bone.name[4:])
-                # Change the name prefix from 'DEF_' to 'TGT_'
+                _TGT_bone = armature_.edit_bones.new(PREFIX_ORG + bone.name[4:])
+                # Change the name prefix from PREFIX_DEF to PREFIX_ORG
                 _TGT_bone.head = _DEF_bone.head
                 _TGT_bone.tail = _DEF_bone.tail
                 _TGT_bone.roll = _DEF_bone.roll
@@ -69,16 +105,16 @@ class YfToolbox_Operator_LinkDEF2TGT(bpy.types.Operator):
             return _TGT_bone
 
         for bone in armature_.edit_bones:
-            if bone.name.startswith('DEF_'):
+            if bone.name.startswith(PREFIX_DEF):
                 new_bone = get_TGT_bone(bone)
 
         yf_lib.set_active_object_interaction_mode('POSE')
 
         for bone in pose_.bones:
-            # Check if the bone name starts with 'DEF_'
-            if bone.name.startswith('DEF_'):
+            # Check if the bone name starts with PREFIX_DEF
+            if bone.name.startswith(PREFIX_DEF):
                 # Construct the corresponding target bone name
-                tgt_bone_name = 'TGT_' + bone.name[4:]
+                tgt_bone_name = PREFIX_ORG + bone.name[4:]
                 # Check if the corresponding target bone exists
                 to_remove_constraints = filter(lambda x: x.name==self.CONSTRAINT_NAME or (x.target==obj_ and x.subtarget==tgt_bone_name), bone.constraints)
                 for c in to_remove_constraints:
@@ -119,76 +155,103 @@ class YfToolbox_Operator_CleanUp(bpy.types.Operator):
         if start_mode != 'EDIT':
             yf_lib.set_active_object_interaction_mode('EDIT')
 
-        all_collections = yf_lib.get_all_collections(armature_)
-        for bone in armature_.edit_bones:
-            for collection_ in all_collections:
-                collection_.unassign(bone)
+        all_collections = yf_lib.get_all_bcolls(armature_)
 
-        if armature_.collections:
-            bpy.ops.armature.collection_remove_unused()
+        # Use WHILE loop to clear all collections,
+        # because when the parent collection is removed,
+        # its child will not be removed with it.
+        while armature_.collections:
+            for _c in [_ for _ in armature_.collections]:
+                armature_.collections.remove(_c)
 
         CHILD_DEPTH = 1
-        LEFT_SUFFIX = ".L"
-        RIGHT_SUFFIX = ".R"
+
+        # Figure out all bones' collection 
+        dict_bcolls = {}
         for bone in armature_.edit_bones:
-            bone_name_splitted = bone.name.split("_")
-            bcoll_root_name = bone_name_splitted[0]
-            
-            bcoll_root = armature_.collections.get(bcoll_root_name)
-            if not bcoll_root:
-                bcoll_root = armature_.collections.new(bcoll_root_name)
-            bcoll_root.assign(bone)
+            bname_parts = bone.name.split("_")
 
-            if len(bone_name_splitted) >= 2:
-                for bcoll_child_name in bone_name_splitted[1:1+CHILD_DEPTH]:
-                    if bone.name.endswith(LEFT_SUFFIX) or bone.name.endswith(RIGHT_SUFFIX):
-                        if "." in bcoll_child_name:
-                            bcoll_child_name = bcoll_child_name[0:bcoll_child_name.index(".")]
-                        direction = "L" if bone.name.endswith(LEFT_SUFFIX) else "R"
-                        bcoll_child_name = f"{bcoll_child_name} - {direction}"
+            # Don't create hierarchy for bones having these prefixes
+            if bname_parts[0] in [PREFIX_DEF, PREFIX_MCH, PREFIX_ORG, PREFIX_ROOT, PREFIX_VIS]:
+                bname_parts = [bname_parts[0]] 
 
-                    bcoll_child_name = f"({bcoll_root_name}) {bcoll_child_name}"
-                    bcoll_child = bcoll_root.children.get(bcoll_child_name)
-                    if not bcoll_child:
-                        bcoll_child = armature_.collections.new(bcoll_child_name, parent=bcoll_root)
-                    bcoll_child.assign(bone)
+            for i in range(len(bname_parts)):
+                part_ = bname_parts[i]
+                if LEFT_SUFFIX in part_ or RIGHT_SUFFIX in part_:
+                    # DEF_HAND.L will be put into DEF_HAND - L
+                    # At the same time, DEF_HAND.L will also be put into DEF_HAND
+                    dict_bcolls.setdefault("_".join(bname_parts[0:i] + [bname_parts[i].split(".")[0]]), []).append(bone)
+                
+                dict_bcolls.setdefault("_".join(bname_parts[0:i+1]), []).append(bone)
+        # If DEF_HAND and DEF_HAND_PALM contains the same bones,
+        # then the collection with longer name will be removed.
+        dict_bcolls = remove_shorter_keys(dict_bcolls)
 
-        # SORT ALL COLLECTION
-        for bcoll in armature_.collections:
-            i_ = 0
-            while i_ < len(bcoll.children):
-                j_ = i_ + 1
-                while j_ < len(bcoll.children):
-                    if bcoll.children[i_].name > bcoll.children[j_].name:
-                        bcoll.children[j_].child_number=i_
-                    j_ += 1
-                i_ += 1
+        def find_parent_collection(collection_name, all_collections):
+            # Split the new collection name into parts based on underscores
+            parts = collection_name.split("_")
+            bcoll_names = {c_.name: c_ for c_ in all_collections}
+
+            if collection_name.endswith(LEFT_SUFFIX) or collection_name.endswith(RIGHT_SUFFIX):
+                parent_name = collection_name.removesuffix(LEFT_SUFFIX).removesuffix(RIGHT_SUFFIX)
+                print(parent_name)
+                if parent_name in bcoll_names:
+                    return bcoll_names[parent_name]
+
+            # Try to find a parent by gradually reducing the parts
+            for i in range(len(parts)-1, 0, -1):
+                parent_name = "_".join(parts[:i])
+                if parent_name in bcoll_names:
+                    return bcoll_names[parent_name]
+
+            return None
+
+        for k in sorted(dict_bcolls.keys()):
+            v = dict_bcolls[k]
+            if len(v) >= 1:
+                # TODO: Wait for blender to fix children collections
+                # bcoll_parent = find_parent_collection(k, yf_lib.get_all_bcolls(armature_))
+                # bcoll = armature_.collections.new(k, parent=bcoll_parent)
+                bcoll = armature_.collections.new(k.removeprefix(PREFIX_CTRL+"_"))
+                for b_ in v:
+                    bcoll.assign(b_)
 
         # Set all bones' color
-        for bone in armature_.edit_bones:
-            for collection in bone.collections:
-                bm_data_color = "DEFAULT"
-                if hasattr(collection, "bm_data"):
-                    bm_data_color = collection.bm_data.editColor
-                if bm_data_color == "DEFAULT" or bone.color.palette != bm_data_color:
-                    i_ = armature_.collections.find(collection.name) + 1
-                    if i_ == 0: 
-                        continue
-                    bone.color.palette = f"THEME{i_:02d}"
-                    if hasattr(collection, "bm_data"):
-                        collection.bm_data.editColor = f"THEME{i_:02d}"
-                        collection.bm_data.poseColor = f"DEFAULT"
+        for k, v in dict_bcolls.items():
+            collection = armature_.collections.get(k)
+            if not collection:
+                continue
+            bm_data_color = "DEFAULT"
+            if hasattr(collection, "bm_data"):
+                bm_data_color = collection.bm_data.editColor
+            if bm_data_color == "DEFAULT" or bone.color.palette != bm_data_color:
+                color_ = "DEFAULT"
+                for prefix_ in prefix_colors:
+                    if prefix_ in k:
+                        for bone_ in v:
+                            bone_.color.palette = prefix_colors[prefix_]
+                            color_ = prefix_colors[prefix_]
 
-        # Set obly DEF bone use deform
+                if hasattr(collection, "bm_data"):
+                    # collection.bm_data.editColor = f"THEME{i_:02d}"
+                    collection.bm_data.editColor = color_
+                    collection.bm_data.poseColor = f"DEFAULT"
+
+        # Set only DEF bone use deform
+        # Set 
         for bone in armature_.edit_bones:
-            if bone.name.startswith("DEF_"):
+            if bone.name.startswith(PREFIX_DEF) or \
+                bone.name.startswith(PREFIX_VIS):
                 bone.hide_select = True
+                for bcoll in bone.collections:
+                    if hasattr(bcoll, "bm_data"):
+                        bcoll.bm_data.is_lock = True
             else:
                 bone.use_deform = False
         
         # Set DEF bone lock transform
         for bone in pose_.bones:
-            if bone.name.startswith("DEF_"):
+            if bone.name.startswith(PREFIX_DEF):
                 bone.lock_location = (True, True, True)
                 bone.lock_rotation = (True, True, True)
                 bone.lock_scale = (True, True, True)
@@ -213,7 +276,7 @@ class YfToolbox_Panel_Rigging(bpy.types.Panel):
 
         row = layout.row()
         row.operator("yf.toolbox_rigging_op_link_tgt_to_def",
-                         text="TGT -> DEF",
+                         text="ORG -> DEF",
                          icon="DECORATE_LINKED")
         row = layout.row()
         row.operator("yf.toolbox_rigging_clean_up",
@@ -221,14 +284,6 @@ class YfToolbox_Panel_Rigging(bpy.types.Panel):
                          icon="BRUSH_DATA")
         
 
+classes = (YfToolbox_Panel_Rigging, YfToolbox_Operator_LinkDEF2TGT, YfToolbox_Operator_CleanUp)
 
-def register():
-    bpy.utils.register_class(YfToolbox_Panel_Rigging)
-    bpy.utils.register_class(YfToolbox_Operator_LinkDEF2TGT)
-    bpy.utils.register_class(YfToolbox_Operator_CleanUp)
-
-def unregister():
-    bpy.utils.unregister_class(YfToolbox_Panel_Rigging)
-    bpy.utils.unregister_class(YfToolbox_Operator_LinkDEF2TGT)
-    bpy.utils.unregister_class(YfToolbox_Operator_CleanUp)
-
+register, unregister = bpy.utils.register_classes_factory(classes)

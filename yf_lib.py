@@ -30,15 +30,17 @@ def set_active_object_interaction_mode(mode_):
     bpy.ops.object.mode_set(mode=mode_)
 
 
-def get_all_collections(armature_):
-    def recursively_get_children_collections(ret_, coll):
-        if len(coll.children) == 0:
-            return [coll]
-        for child in coll.children:
-            ret_ += recursively_get_children_collections(ret_, child)
-        return ret_ 
+def get_all_bcolls(arm_):
+    def get_all_children_bcolls(collection, all_collections=None):
+        if all_collections is None:
+            all_collections = []
+        # Add the current collection to the list
+        all_collections.append(collection)
+        # Recursively add all child collections
+        for child in collection.children:
+            get_all_children_bcolls(child, all_collections)
+        return all_collections
     ret = []
-    for c in armature_.collections:
-        ret += recursively_get_children_collections([], c)
-    ret += [c for c in armature_.collections]
+    for c in arm_.collections:
+        ret += get_all_children_bcolls(c)
     return ret
