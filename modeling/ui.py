@@ -1,6 +1,5 @@
 import bpy
 
-    
 class YfToolbox_Panel_Modeling(bpy.types.Panel):
     bl_idname = "yf.toolbox_panel_modeling"
     bl_label = "MODEL"
@@ -13,10 +12,3 @@ class YfToolbox_Panel_Modeling(bpy.types.Panel):
         # presses the button in the UI.
         layout = self.layout
         scene = context.scene
-
-def register():
-    bpy.utils.register_class(YfToolbox_Panel_Modeling)
-
-def unregister():
-    bpy.utils.unregister_class(YfToolbox_Panel_Modeling)
-

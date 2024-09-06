@@ -1,8 +1,8 @@
 import bpy
 import importlib
-from . import rigging, modeling, pomodoro, timelapse, yf_lib
-
-DEBUG = True
+from . import pref
+from . import modeling, pomodoro, timelapse
+from . import rigging
 
 bl_info = {
     "name": "Yf's Toolbox",
@@ -15,26 +15,30 @@ bl_info = {
     "doc_url": "https://github.com/swtsr-sanity/yf_toolbox_blender",
 }
 
+from types import ModuleType
+
+
+from importlib import reload  # Python 3.4+
 
 
 def register():
-    if DEBUG:
-        try:
-                importlib.reload(rigging)
-                importlib.reload(yf_lib)
-        except:
-            pass
     
+    reload(rigging)
+    reload(rigging.ui)
+    reload(rigging.operator)
+    reload(rigging.property)
+    reload(pref)
+
+    bpy.utils.register_class(pref.YfToolbox_AddonPreference)
     rigging.register()
-    modeling.register()
-    pomodoro.register()
-    timelapse.register()
+
+    
+
+
 
 def unregister():
     rigging.unregister()
-    modeling.unregister()
-    pomodoro.unregister()
-    timelapse.unregister()
+    bpy.utils.unregister_class(pref.YfToolbox_AddonPreference)
 
 if __name__ == "__main__":
     register()
